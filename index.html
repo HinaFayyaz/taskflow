@@ -116,6 +116,11 @@
             <span class="create-pill-icon"><i class="fa-solid fa-plus"></i></span> Create
           </button>
           <div class="view-tabs" id="view-tabs">
+            <button class="vtab active" id="vtab-board" onclick="switchLayout('board',this)"><i class="fa-solid fa-table-columns"></i> Board</button>
+            <button class="vtab" id="vtab-list" onclick="switchLayout('list',this)"><i class="fa-solid fa-list"></i> List</button>
+            <button class="vtab" id="vtab-calendar" onclick="switchLayout('calendar',this)"><i class="fa-regular fa-calendar"></i> Calendar</button>
+          </div>
+          <div class="view-tabs" id="scope-tabs">
             <button class="vtab active" onclick="switchView('daily',this)">Daily</button>
             <button class="vtab" onclick="switchView('weekly',this)">Weekly</button>
           </div>
@@ -142,7 +147,39 @@
           <select id="task-folder" class="add-select"></select>
           <button class="add-btn" onclick="addTask()"><i class="fa-solid fa-plus"></i> Add Task</button>
         </div>
+
+        <!-- BOARD (kanban) view -->
         <div class="board-cols" id="board"></div>
+
+        <!-- LIST (table) view -->
+        <div id="list-view" style="display:none;">
+          <div class="list-toolbar">
+            <button class="list-col-btn" onclick="openColumnMenu(event)"><i class="fa-solid fa-sliders"></i> Columns</button>
+          </div>
+          <div class="list-wrap"><table class="list-table" id="list-table"></table></div>
+        </div>
+
+        <!-- CALENDAR view -->
+        <div id="calendar-view" style="display:none;">
+          <div class="cal-header">
+            <button class="cal-nav-btn" onclick="calPrev()"><i class="fa-solid fa-chevron-left"></i></button>
+            <span class="cal-title" id="cal-title"></span>
+            <button class="cal-nav-btn" onclick="calNext()"><i class="fa-solid fa-chevron-right"></i></button>
+            <button class="cal-today-btn" onclick="calToday()">Today</button>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+      </div>
+
+      <!-- Column picker popup -->
+      <div class="col-menu" id="col-menu" style="display:none;">
+        <div class="col-menu-title">Show columns</div>
+        <label class="col-menu-item"><input type="checkbox" data-col="tag" checked onchange="toggleColumn('tag',this)"> Tag</label>
+        <label class="col-menu-item"><input type="checkbox" data-col="priority" checked onchange="toggleColumn('priority',this)"> Priority</label>
+        <label class="col-menu-item"><input type="checkbox" data-col="status" checked onchange="toggleColumn('status',this)"> Status</label>
+        <label class="col-menu-item"><input type="checkbox" data-col="due" checked onchange="toggleColumn('due',this)"> Due Date</label>
+        <label class="col-menu-item"><input type="checkbox" data-col="folder" onchange="toggleColumn('folder',this)"> Folder</label>
+        <label class="col-menu-item"><input type="checkbox" data-col="shared" onchange="toggleColumn('shared',this)"> Shared with</label>
       </div>
 
       <!-- Notes Page -->
@@ -258,9 +295,18 @@
           </select>
         </div>
         <div class="detail-field">
-          <label class="detail-label">Due Date</label>
-          <input type="date" id="nt-date" class="modal-input" />
+          <label class="detail-label">Priority</label>
+          <select id="nt-priority" class="modal-input">
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
         </div>
+      </div>
+
+      <div class="detail-field">
+        <label class="detail-label">Due Date</label>
+        <input type="date" id="nt-date" class="modal-input" />
       </div>
 
       <div class="detail-field">
