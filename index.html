@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow</title>
+  
+  
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══ AUTH SCREEN ══════════════════════════════════════════ -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="logo-mark">T</span>
+        <span class="auth-logo-text">TaskFlow</span>
+      </div>
+      <h2 id="auth-heading" class="auth-heading">Welcome back</h2>
+      <p id="auth-sub" class="auth-sub">Log in to your workspace</p>
+
+      <div id="auth-error" class="auth-error" style="display:none;"></div>
+      <div id="auth-success" class="auth-success" style="display:none;"></div>
+
+      <div class="auth-field" id="auth-name-field" style="display:none;">
+        <label class="detail-label">Full Name</label>
+        <input type="text" id="auth-name" class="modal-input" placeholder="Your name" autocomplete="name" />
+      </div>
+      <div class="auth-field">
+        <label class="detail-label">Email</label>
+        <input type="email" id="auth-email" class="modal-input" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="auth-field">
+        <label class="detail-label">Password</label>
+        <input type="password" id="auth-password" class="modal-input" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()" />
+      </div>
+
+      <button class="auth-submit-btn" id="auth-submit" onclick="submitAuth()">Log In</button>
+
+      <div class="auth-toggle">
+        <span id="auth-toggle-text">Don't have an account?</span>
+        <button class="auth-toggle-btn" id="auth-toggle-btn" onclick="toggleAuthMode()">Sign up</button>
+      </div>
+    </div>
+    <div class="auth-footer-note">Your tasks sync securely across devices.</div>
+  </div>
+
+  <!-- ══ MAIN APP (hidden until logged in) ════════════════════ -->
+  <div id="app-shell" style="display:none;">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-mark">T</span>
+        <span class="logo-text">TaskFlow</span>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Workspace</div>
+        <a class="nav-item active" onclick="navigateTo('board')" href="#">
+          <i class="fa-regular fa-rectangle-list"></i> My Board
+        </a>
+        <a class="nav-item" onclick="navigateTo('notes')" href="#">
+          <i class="fa-regular fa-note-sticky"></i> Notes
+        </a>
+
+        <div class="nav-section-label" style="margin-top:1.5rem;">Folders
+          <button class="icon-btn" onclick="openFolderModal()" title="New folder"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div id="folder-list"></div>
+
+        <div class="nav-section-label" style="margin-top:1.5rem;">Shared with me</div>
+        <div id="shared-list"></div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="profile-menu" id="profile-menu">
+          <button class="profile-menu-item" onclick="openProfileModal('photo')"><i class="fa-solid fa-camera"></i> Change profile picture</button>
+          <button class="profile-menu-item" onclick="openProfileModal('email')"><i class="fa-solid fa-envelope"></i> Change email</button>
+          <button class="profile-menu-item" onclick="openProfileModal('password')"><i class="fa-solid fa-lock"></i> Change password</button>
+          <div class="profile-menu-divider"></div>
+          <button class="profile-menu-item profile-menu-logout" onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log out</button>
+        </div>
+        <div class="sidebar-user" id="sidebar-user" onclick="toggleProfileMenu(event)">
+          <div class="user-avatar" id="user-avatar">D</div>
+          <div style="flex:1;min-width:0;">
+            <div class="user-name" id="user-name">User</div>
+            <div class="user-role" id="user-email">—</div>
+          </div>
+          <i class="fa-solid fa-chevron-up profile-chevron" id="profile-chevron"></i>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main-wrap">
+      <header class="topbar">
+        <button class="icon-btn sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="topbar-center">
+          <div id="page-title" class="page-title">My Board</div>
+          <div class="topbar-search" id="topbar-search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="search-input" placeholder="Search tasks…" oninput="onSearchInput()" autocomplete="off" />
+            <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none;"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="date-chip" id="date-chip"></div>
+          <button class="share-topbar-btn" id="share-topbar-btn" onclick="openShareHub()" title="Share">
+            <i class="fa-solid fa-share-nodes"></i> Share
+          </button>
+          <button class="create-pill-btn" id="newtask-topbar-btn" onclick="openNewTaskModal()" title="Create a task">
+            <span class="create-pill-icon"><i class="fa-solid fa-plus"></i></span> Create
+          </button>
+          <div class="view-tabs" id="view-tabs">
+            <button class="vtab active" onclick="switchView('daily',this)">Daily</button>
+            <button class="vtab" onclick="switchView('weekly',this)">Weekly</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Board Page -->
+      <div class="page active" id="page-board">
+        <div id="shared-banner" class="shared-banner" style="display:none;"></div>
+        <div class="stats-row" id="stats-row"></div>
+        <div class="add-bar" id="add-bar">
+          <input type="text" id="task-input" class="add-input" placeholder="Add a new task…" onkeydown="if(event.key==='Enter')addTask()" />
+          <select id="task-tag" class="add-select">
+            <option value="client">Client Work</option>
+            <option value="admin">Admin</option>
+            <option value="content">Content</option>
+            <option value="project">Project</option>
+          </select>
+          <select id="task-scope" class="add-select">
+            <option value="daily">Today</option>
+            <option value="weekly">This Week</option>
+          </select>
+          <input type="date" id="task-date" class="add-input date-input" />
+          <select id="task-folder" class="add-select"></select>
+          <button class="add-btn" onclick="addTask()"><i class="fa-solid fa-plus"></i> Add Task</button>
+        </div>
+        <div class="board-cols" id="board"></div>
+      </div>
+
+      <!-- Notes Page -->
+      <div class="page" id="page-notes">
+        <div class="notes-toolbar">
+          <button class="add-btn" onclick="openNoteModal()"><i class="fa-solid fa-plus"></i> New Note</button>
+        </div>
+        <div class="notes-grid" id="notes-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODALS ════════════════════════════════════════════════ -->
+
+  <!-- Folder Modal -->
+  <div class="modal-overlay" id="folder-modal" onclick="closeFolderModal(event)">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="folder-modal-title">New Folder</h3>
+        <button class="icon-btn" onclick="closeFolderModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <input type="text" id="folder-name-input" class="modal-input" placeholder="Folder name…" onkeydown="if(event.key==='Enter')saveFolder()" />
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" onclick="closeFolderModal()">Cancel</button>
+        <button class="add-btn" onclick="saveFolder()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Note Modal -->
+  <div class="modal-overlay" id="note-modal" onclick="closeNoteModal(event)">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="note-modal-title">New Note</h3>
+        <button class="icon-btn" onclick="closeNoteModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <input type="text" id="note-title-input" class="modal-input" placeholder="Note title…" />
+      <textarea id="note-body-input" class="modal-textarea" placeholder="Write your note here…"></textarea>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" onclick="closeNoteModal()">Cancel</button>
+        <button class="add-btn" onclick="saveNote()">Save Note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Detail Modal -->
+  <div class="modal-overlay" id="task-modal" onclick="closeTaskModal(event)">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 id="task-modal-title">Task Details</h3>
+        <div style="display:flex;gap:6px;">
+          <button class="share-inline-btn" id="task-share-btn" onclick="shareCurrentTask()" title="Share this task">
+            <i class="fa-solid fa-share-nodes"></i> Share
+          </button>
+          <button class="icon-btn" onclick="closeTaskModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+      </div>
+      <div id="task-detail-body"></div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" onclick="closeTaskModal()">Close</button>
+        <button class="add-btn" id="task-save-btn" onclick="saveTaskDetail()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- New Task Modal -->
+  <div class="modal-overlay" id="newtask-modal" onclick="closeNewTaskModal(event)">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="share-icon-badge" style="background:linear-gradient(135deg,var(--violet),var(--violet-d));"><i class="fa-solid fa-plus"></i></div>
+          <h3>Create New Task</h3>
+        </div>
+        <button class="icon-btn" onclick="closeNewTaskModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="detail-field">
+        <label class="detail-label">Title</label>
+        <input type="text" id="nt-title" class="modal-input" placeholder="What needs to be done?" />
+      </div>
+
+      <div class="detail-field">
+        <label class="detail-label">Description</label>
+        <textarea id="nt-desc" class="modal-textarea" style="min-height:90px;" placeholder="Add more detail (optional)…"></textarea>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-field">
+          <label class="detail-label">Tag</label>
+          <select id="nt-tag" class="modal-input">
+            <option value="client">Client Work</option>
+            <option value="admin">Admin</option>
+            <option value="content">Content</option>
+            <option value="project">Project</option>
+          </select>
+        </div>
+        <div class="detail-field">
+          <label class="detail-label">Status</label>
+          <select id="nt-status" class="modal-input">
+            <option value="todo">To Do</option>
+            <option value="doing">In Progress</option>
+            <option value="done">Completed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="detail-row">
+        <div class="detail-field">
+          <label class="detail-label">Scope</label>
+          <select id="nt-scope" class="modal-input">
+            <option value="daily">Today</option>
+            <option value="weekly">This Week</option>
+          </select>
+        </div>
+        <div class="detail-field">
+          <label class="detail-label">Due Date</label>
+          <input type="date" id="nt-date" class="modal-input" />
+        </div>
+      </div>
+
+      <div class="detail-field">
+        <label class="detail-label">Folder</label>
+        <select id="nt-folder" class="modal-input"></select>
+      </div>
+
+      <div class="share-divider"></div>
+
+      <!-- Share control -->
+      <div class="detail-field">
+        <label class="detail-label">Share with (optional)</label>
+        <div class="nt-share-row">
+          <input type="email" id="nt-share-email" class="modal-input" placeholder="teammate@example.com" />
+          <select id="nt-share-perm" class="modal-input nt-perm-select">
+            <option value="view">View only</option>
+            <option value="edit">View &amp; edit</option>
+          </select>
+          <button class="nt-add-share-btn" onclick="ntAddShareChip()" type="button"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div id="nt-share-chips" class="nt-share-chips"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" onclick="closeNewTaskModal()">Cancel</button>
+        <button class="add-btn" onclick="submitNewTask()"><i class="fa-solid fa-check"></i> Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Share Hub Modal -->
+  <div class="modal-overlay" id="share-hub-modal" onclick="closeShareHub(event)">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="share-icon-badge"><i class="fa-solid fa-share-nodes"></i></div>
+          <h3>Share by Email</h3>
+        </div>
+        <button class="icon-btn" onclick="closeShareHub()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="share-tabs">
+        <button class="share-tab active" onclick="switchShareTab('task',this)">A Task</button>
+        <button class="share-tab" onclick="switchShareTab('folder',this)">A Folder</button>
+        <button class="share-tab" onclick="switchShareTab('board',this)">Whole Board</button>
+      </div>
+
+      <!-- What to share -->
+      <div class="share-tab-panel active" id="share-panel-task">
+        <label class="detail-label" style="margin-bottom:6px;display:block;">Select task</label>
+        <select class="modal-input" id="share-task-select"></select>
+      </div>
+      <div class="share-tab-panel" id="share-panel-folder">
+        <label class="detail-label" style="margin-bottom:6px;display:block;">Select folder</label>
+        <select class="modal-input" id="share-folder-select"></select>
+      </div>
+      <div class="share-tab-panel" id="share-panel-board">
+        <div class="board-share-info">
+          <i class="fa-solid fa-clipboard-list" style="font-size:24px;color:var(--violet);"></i>
+          <div style="font-size:13px;color:var(--t2);">This shares every task on your board.</div>
+        </div>
+      </div>
+
+      <!-- Email + permission -->
+      <div class="share-divider"></div>
+      <div class="detail-field">
+        <label class="detail-label">Invite by email</label>
+        <input type="email" id="share-email-input" class="modal-input" placeholder="teammate@example.com" />
+      </div>
+      <div class="share-permission-row">
+        <span class="detail-label">They can</span>
+        <div class="permission-pills">
+          <label class="perm-pill"><input type="radio" name="share-perm" value="view" checked /> View only</label>
+          <label class="perm-pill"><input type="radio" name="share-perm" value="edit" /> View &amp; edit</label>
+        </div>
+      </div>
+
+      <button class="add-btn" style="width:100%;justify-content:center;" id="share-submit-btn" onclick="submitShare()">
+        <i class="fa-solid fa-paper-plane"></i> Share &amp; Send Invite
+      </button>
+
+      <div class="share-result" id="share-result" style="display:none;"></div>
+
+      <!-- Existing shares -->
+      <div class="share-divider"></div>
+      <div class="detail-label" style="margin-bottom:8px;">People with access</div>
+      <div id="share-people-list"></div>
+    </div>
+  </div>
+
+  <!-- Profile Settings Modal -->
+  <div class="modal-overlay" id="profile-modal" onclick="closeProfileModal(event)">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="profile-modal-title">Profile</h3>
+        <button class="icon-btn" onclick="closeProfileModal()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Photo panel -->
+      <div class="profile-panel" id="profile-panel-photo">
+        <div class="profile-photo-row">
+          <div class="profile-photo-preview" id="profile-photo-preview">D</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;color:var(--t1);margin-bottom:4px;">Profile picture</div>
+            <div style="font-size:12px;color:var(--t2);">Upload a photo so teammates recognise you. Max 1 MB.</div>
+          </div>
+        </div>
+        <input type="file" id="profile-photo-input" accept="image/*" style="display:none;" onchange="onProfilePhotoSelected(event)" />
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="add-btn" onclick="document.getElementById('profile-photo-input').click()"><i class="fa-solid fa-upload"></i> Upload photo</button>
+          <button class="modal-cancel-btn" id="profile-photo-remove" onclick="removeProfilePhoto()"><i class="fa-solid fa-trash"></i> Remove</button>
+        </div>
+      </div>
+
+      <!-- Email panel -->
+      <div class="profile-panel" id="profile-panel-email" style="display:none;">
+        <div class="detail-field">
+          <label class="detail-label">New email address</label>
+          <input type="email" id="profile-email-input" class="modal-input" placeholder="newemail@example.com" />
+        </div>
+        <div style="font-size:12px;color:var(--t2);">Supabase will send a confirmation link to the new address. The change takes effect once you click that link.</div>
+        <div class="modal-footer">
+          <button class="modal-cancel-btn" onclick="closeProfileModal()">Cancel</button>
+          <button class="add-btn" onclick="saveNewEmail()">Update email</button>
+        </div>
+      </div>
+
+      <!-- Password panel -->
+      <div class="profile-panel" id="profile-panel-password" style="display:none;">
+        <div class="detail-field">
+          <label class="detail-label">New password</label>
+          <input type="password" id="profile-pw-input" class="modal-input" placeholder="At least 6 characters" autocomplete="new-password" />
+        </div>
+        <div class="detail-field">
+          <label class="detail-label">Confirm new password</label>
+          <input type="password" id="profile-pw-confirm" class="modal-input" placeholder="Re-type password" autocomplete="new-password" />
+        </div>
+        <div class="modal-footer">
+          <button class="modal-cancel-btn" onclick="closeProfileModal()">Cancel</button>
+          <button class="add-btn" onclick="saveNewPassword()">Update password</button>
+        </div>
+      </div>
+
+      <div id="profile-msg" class="profile-msg" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Image Preview -->
+  <div class="modal-overlay" id="img-preview-overlay" onclick="closeImgPreview(event)">
+    <div class="img-preview-wrap">
+      <div class="img-preview-header">
+        <span id="img-preview-name" class="img-preview-name"></span>
+        <button class="img-preview-close icon-btn" onclick="closeImgPreview(event)">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <img id="img-preview-el" src="" alt="Preview" class="img-preview-img" />
+    </div>
+  </div>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
