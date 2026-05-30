@@ -28,12 +28,23 @@ let outgoingShares = [];       // shares I created (for current share target)
 let myShares = [];             // all shares I created (for card avatars)
 
 let view = 'daily';
+let layout = 'board';          // 'board' | 'list' | 'calendar'
 let activeContext = { kind: 'board' };  // {kind:'board'|'folder', folderId}
                                         // or {kind:'shared', share, tasks, folders, canEdit}
 let editingFolderId = null;
 let editingNoteId   = null;
 let editingTaskId   = null;
 let shareTab = 'task';
+
+// Calendar navigation (year/month being viewed)
+let calDate = new Date();
+
+// Which list columns are visible
+let listColumns = { tag:true, priority:true, status:true, due:true, folder:false, shared:false };
+
+// Priority metadata
+const priorityMap   = { high:'High', medium:'Medium', low:'Low' };
+const priorityClass = { high:'prio-high', medium:'prio-medium', low:'prio-low' };
 
 // ════════════════════════════════════════════════════════════════════
 //  BOOT
@@ -460,6 +471,7 @@ function navigateTo(page) {
     document.getElementById('shared-banner').style.display = 'none';
     document.getElementById('add-bar').style.display = 'flex';
     document.getElementById('view-tabs').style.display = 'flex';
+    document.getElementById('scope-tabs').style.display = 'flex';
     document.getElementById('share-topbar-btn').style.display = 'flex';
     document.getElementById('newtask-topbar-btn').style.display = 'flex';
     document.getElementById('topbar-search').style.display = 'flex';
@@ -468,6 +480,7 @@ function navigateTo(page) {
   } else {
     document.getElementById('page-title').textContent = 'Notes';
     document.getElementById('view-tabs').style.display = 'none';
+    document.getElementById('scope-tabs').style.display = 'none';
     document.getElementById('share-topbar-btn').style.display = 'none';
     document.getElementById('newtask-topbar-btn').style.display = 'none';
     document.getElementById('topbar-search').style.display = 'none';
@@ -483,7 +496,8 @@ function filterByFolder(fid) {
   document.getElementById('page-title').textContent = myFolders.find(f=>f.id===fid)?.name || 'Folder';
   document.getElementById('shared-banner').style.display = 'none';
   document.getElementById('add-bar').style.display = 'flex';
-  document.getElementById('view-tabs').style.display = 'none';
+  document.getElementById('view-tabs').style.display = 'flex';
+  document.getElementById('scope-tabs').style.display = 'none';
   document.getElementById('share-topbar-btn').style.display = 'flex';
   document.getElementById('newtask-topbar-btn').style.display = 'flex';
   document.getElementById('topbar-search').style.display = 'flex';
@@ -572,13 +586,18 @@ function isOverdue(t) {
   return d < new Date();
 }
 
-function renderBoard() {
-  const { tasks: allTasks, folders, readOnly } = currentBoardData();
-  const tasks = searchTerm
+function getVisibleTasks() {
+  const { tasks: allTasks } = currentBoardData();
+  return searchTerm
     ? allTasks.filter(t =>
         (t.text||'').toLowerCase().includes(searchTerm) ||
         (t.note||'').toLowerCase().includes(searchTerm))
     : allTasks;
+}
+
+function renderBoard() {
+  const { folders, readOnly } = currentBoardData();
+  const tasks = getVisibleTasks();
   const cols = { todo:[], doing:[], done:[] };
   tasks.forEach(t => { if (cols[t.status]) cols[t.status].push(t); });
   const total = tasks.length, done = cols.done.length, pct = total ? Math.round(done/total*100) : 0;
@@ -614,15 +633,30 @@ function renderBoard() {
       </div>
     </div>`;
 
+  // Show only the active view container
+  document.getElementById('board').style.display         = (layout === 'board')    ? 'grid'  : 'none';
+  document.getElementById('list-view').style.display     = (layout === 'list')     ? 'block' : 'none';
+  document.getElementById('calendar-view').style.display = (layout === 'calendar') ? 'block' : 'none';
+
+  if (layout === 'board')    renderKanban(cols, folders, readOnly);
+  if (layout === 'list')     renderList(tasks, folders, readOnly);
+  if (layout === 'calendar') renderCalendar(tasks, readOnly);
+}
+
+// ─── BOARD (Kanban) with drag & drop ─────────────────────────────────
+function renderKanban(cols, folders, readOnly) {
   const colDefs = [
     { key:'todo',  label:'To Do',       cls:'count-todo'  },
     { key:'doing', label:'In Progress',  cls:'count-doing' },
     { key:'done',  label:'Completed',    cls:'count-done'  },
   ];
   document.getElementById('board').innerHTML = colDefs.map(col => `
-    <div class="board-col">
+    <div class="board-col" data-status="${col.key}"
+         ${readOnly?'':`ondragover="onColDragOver(event)" ondragleave="onColDragLeave(event)" ondrop="onColDrop(event,'${col.key}')"`}>
       <div class="col-head"><span class="col-title">${col.label}</span><span class="col-count ${col.cls}">${cols[col.key].length}</span></div>
-      ${cols[col.key].length ? cols[col.key].map(t => taskCard(t, folders, readOnly)).join('') : '<div class="empty-col"><i class="fa-regular fa-circle-check" style="font-size:20px;margin-bottom:6px;display:block;"></i>Nothing here</div>'}
+      <div class="col-body">
+        ${cols[col.key].length ? cols[col.key].map(t => taskCard(t, folders, readOnly)).join('') : '<div class="empty-col"><i class="fa-regular fa-circle-check" style="font-size:20px;margin-bottom:6px;display:block;"></i>Nothing here</div>'}
+      </div>
     </div>`).join('');
 }
 
@@ -632,13 +666,16 @@ function taskCard(t, folders, readOnly) {
   const clickAttr = readOnly ? '' : `onclick="openTaskDetail('${t.id}')"`;
   const sharedEmails = readOnly ? [] : sharedEmailsForTask(t);
   const overdue = isOverdue(t);
+  const prio = t.priority || 'medium';
+  const dragAttrs = readOnly ? '' : `draggable="true" ondragstart="onCardDragStart(event,'${t.id}')" ondragend="onCardDragEnd(event)"`;
   return `
-    <div class="task-card${overdue?' is-overdue':''}" ${clickAttr} style="${readOnly?'cursor:default;':''}">
+    <div class="task-card${overdue?' is-overdue':''}" data-task-id="${t.id}" ${dragAttrs} ${clickAttr} style="${readOnly?'cursor:default;':''}">
       <div class="task-top">
         <div class="task-check ${t.status==='done'?'checked':''}" ${readOnly?'':`onclick="cycleStatus(event,'${t.id}')"`}></div>
         <div class="task-body">
           <div class="task-text ${t.status==='done'?'done-text':''}">${esc(t.text)}</div>
           <div class="task-meta">
+            <span class="prio-dot ${priorityClass[prio]}" title="${priorityMap[prio]} priority"></span>
             <span class="tag ${tagClass[t.tag]}">${tagMap[t.tag]||t.tag}</span>
             ${t.due_date?`<span class="task-date-badge${overdue?' overdue-date':''}"><i class="fa-regular fa-calendar" style="font-size:10px;"></i> ${formatDate(t.due_date)}</span>`:''}
             ${t.note?`<span class="task-note-icon" title="Has note"><i class="fa-regular fa-note-sticky"></i></span>`:''}
@@ -657,6 +694,184 @@ function taskCard(t, folders, readOnly) {
         <button class="del-btn" style="position:static;opacity:1;" onclick="deleteTask(event,'${t.id}')" title="Delete"><i class="fa-solid fa-xmark"></i></button>
       </div>`}
     </div>`;
+}
+
+// ─── Drag & drop handlers ────────────────────────────────────────────
+let draggedTaskId = null;
+function onCardDragStart(e, id) {
+  draggedTaskId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', id); } catch(_) {}
+  setTimeout(() => { const el = e.target.closest('.task-card'); if (el) el.classList.add('dragging'); }, 0);
+}
+function onCardDragEnd(e) {
+  const el = e.target.closest('.task-card'); if (el) el.classList.remove('dragging');
+  draggedTaskId = null;
+  document.querySelectorAll('.board-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+}
+function onColDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const col = e.currentTarget; col.classList.add('drag-over');
+}
+function onColDragLeave(e) {
+  // only remove if we actually left the column (not entered a child)
+  if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
+}
+async function onColDrop(e, newStatus) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const id = draggedTaskId || (e.dataTransfer ? e.dataTransfer.getData('text/plain') : null);
+  if (!id) return;
+  const t = findTask(id);
+  if (!t || t.status === newStatus) return;
+  t.status = newStatus;
+  renderBoard();
+  await db.from('tasks').update({ status: newStatus }).eq('id', id);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  LAYOUT SWITCHER
+// ════════════════════════════════════════════════════════════════════
+function switchLayout(name, btn) {
+  layout = name;
+  document.querySelectorAll('#view-tabs .vtab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderBoard();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  LIST (TABLE) VIEW
+// ════════════════════════════════════════════════════════════════════
+const statusMeta = {
+  todo:  { label:'To Do',       cls:'st-todo'  },
+  doing: { label:'In Progress', cls:'st-doing' },
+  done:  { label:'Completed',   cls:'st-done'  },
+};
+
+function renderList(tasks, folders, readOnly) {
+  const cols = listColumns;
+  const head = `
+    <thead><tr>
+      <th class="lt-name">Task</th>
+      ${cols.tag?'<th>Tag</th>':''}
+      ${cols.priority?'<th>Priority</th>':''}
+      ${cols.status?'<th>Status</th>':''}
+      ${cols.due?'<th>Due Date</th>':''}
+      ${cols.folder?'<th>Folder</th>':''}
+      ${cols.shared?'<th>Shared with</th>':''}
+      ${readOnly?'':'<th class="lt-actions"></th>'}
+    </tr></thead>`;
+
+  if (!tasks.length) {
+    document.getElementById('list-table').innerHTML = head +
+      `<tbody><tr><td colspan="9" class="lt-empty">No tasks yet.</td></tr></tbody>`;
+    return;
+  }
+
+  const order = { todo:0, doing:1, done:2 };
+  const prioOrder = { high:0, medium:1, low:2 };
+  const sorted = [...tasks].sort((a,b) =>
+    (order[a.status]-order[b.status]) || (prioOrder[a.priority||'medium']-prioOrder[b.priority||'medium']));
+
+  const rows = sorted.map(t => {
+    const folder = folders.find(f => f.id === t.folder_id);
+    const prio = t.priority || 'medium';
+    const overdue = isOverdue(t);
+    const sm = statusMeta[t.status] || statusMeta.todo;
+    const clickAttr = readOnly ? '' : `onclick="openTaskDetail('${t.id}')"`;
+    return `<tr class="lt-row" ${clickAttr}>
+      <td class="lt-name">
+        <span class="lt-check ${t.status==='done'?'checked':''}" ${readOnly?'':`onclick="cycleStatus(event,'${t.id}')"`}></span>
+        <span class="${t.status==='done'?'lt-done-text':''}">${esc(t.text)}</span>
+      </td>
+      ${cols.tag?`<td><span class="tag ${tagClass[t.tag]}">${tagMap[t.tag]||t.tag}</span></td>`:''}
+      ${cols.priority?`<td><span class="prio-pill ${priorityClass[prio]}">${priorityMap[prio]}</span></td>`:''}
+      ${cols.status?`<td><span class="status-pill ${sm.cls}">${sm.label}</span></td>`:''}
+      ${cols.due?`<td class="${overdue?'lt-overdue':''}">${t.due_date?formatDate(t.due_date):'—'}</td>`:''}
+      ${cols.folder?`<td>${folder?esc(folder.name):'—'}</td>`:''}
+      ${cols.shared?`<td>${avatarStack(readOnly?[]:sharedEmailsForTask(t))||'—'}</td>`:''}
+      ${readOnly?'':`<td class="lt-actions">
+        <button class="lt-act-btn" onclick="quickShareTask('${t.id}',event)" title="Share"><i class="fa-solid fa-share-nodes"></i></button>
+        <button class="lt-act-btn lt-del" onclick="deleteTask(event,'${t.id}')" title="Delete"><i class="fa-solid fa-trash"></i></button>
+      </td>`}
+    </tr>`;
+  }).join('');
+
+  document.getElementById('list-table').innerHTML = head + `<tbody>${rows}</tbody>`;
+}
+
+// ─── Column picker popup ─────────────────────────────────────────────
+function openColumnMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('col-menu');
+  menu.style.display = 'block';
+  const btn = e.currentTarget.getBoundingClientRect();
+  menu.style.top  = (btn.bottom + 6) + 'px';
+  menu.style.left = Math.max(12, btn.right - menu.offsetWidth) + 'px';
+  menu.querySelectorAll('input[data-col]').forEach(cb => { cb.checked = !!listColumns[cb.dataset.col]; });
+}
+function closeColumnMenu() { document.getElementById('col-menu').style.display = 'none'; }
+function toggleColumn(col, cb) {
+  listColumns[col] = cb.checked;
+  const d = currentBoardData();
+  renderList(getVisibleTasks(), d.folders, d.readOnly);
+}
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('col-menu');
+  if (menu && menu.style.display === 'block' && !menu.contains(e.target) && !e.target.closest('.list-col-btn')) {
+    closeColumnMenu();
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+//  CALENDAR VIEW
+// ════════════════════════════════════════════════════════════════════
+const CAL_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CAL_DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function calPrev()  { calDate = new Date(calDate.getFullYear(), calDate.getMonth()-1, 1); renderBoard(); }
+function calNext()  { calDate = new Date(calDate.getFullYear(), calDate.getMonth()+1, 1); renderBoard(); }
+function calToday() { calDate = new Date(); renderBoard(); }
+
+function renderCalendar(tasks, readOnly) {
+  const year = calDate.getFullYear();
+  const month = calDate.getMonth();
+  document.getElementById('cal-title').textContent = `${CAL_MONTHS[month]} ${year}`;
+
+  const startDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const byDate = {};
+  tasks.forEach(t => { if (t.due_date) (byDate[t.due_date] = byDate[t.due_date] || []).push(t); });
+
+  let html = `<div class="cal-dow-row">${CAL_DOW.map(d=>`<div class="cal-dow">${d}</div>`).join('')}</div>`;
+  html += '<div class="cal-days">';
+  for (let i = 0; i < startDow; i++) html += `<div class="cal-cell cal-empty"></div>`;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const ds = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dayTasks = byDate[ds] || [];
+    const isToday = ds === todayStr;
+    const chips = dayTasks.slice(0,3).map(t => {
+      const prio = t.priority || 'medium';
+      return `<div class="cal-chip ${priorityClass[prio]} ${t.status==='done'?'cal-chip-done':''}"
+                   ${readOnly?'':`onclick="event.stopPropagation();openTaskDetail('${t.id}')"`} title="${esc(t.text)}">${esc(t.text)}</div>`;
+    }).join('');
+    const more = dayTasks.length > 3 ? `<div class="cal-more">+${dayTasks.length-3} more</div>` : '';
+    html += `
+      <div class="cal-cell ${isToday?'cal-today':''}" ${readOnly?'':`ondblclick="calQuickAdd('${ds}')"`}>
+        <div class="cal-daynum">${day}</div>
+        <div class="cal-chips">${chips}${more}</div>
+      </div>`;
+  }
+  html += '</div>';
+  document.getElementById('cal-grid').innerHTML = html;
+}
+
+function calQuickAdd(ds) {
+  openNewTaskModal();
+  document.getElementById('nt-date').value = ds;
 }
 
 function findTask(id) {
@@ -722,6 +937,7 @@ function openNewTaskModal() {
   document.getElementById('nt-tag').value = 'client';
   document.getElementById('nt-status').value = 'todo';
   document.getElementById('nt-scope').value = (view === 'weekly') ? 'weekly' : 'daily';
+  document.getElementById('nt-priority').value = 'medium';
   document.getElementById('nt-date').value = today();
   document.getElementById('nt-share-email').value = '';
   document.getElementById('nt-share-perm').value = 'view';
@@ -784,6 +1000,7 @@ async function submitNewTask() {
     tag:    document.getElementById('nt-tag').value,
     scope:  document.getElementById('nt-scope').value,
     status: document.getElementById('nt-status').value,
+    priority: document.getElementById('nt-priority').value,
     due_date: document.getElementById('nt-date').value || null,
     folder_id: folderVal,
     note: document.getElementById('nt-desc').value.trim(),
@@ -843,6 +1060,7 @@ function openTaskDetail(id) {
   const so = ['daily','weekly'].map(s=>`<option value="${s}" ${t.scope===s?'selected':''}>${s==='daily'?'Today':'This Week'}</option>`).join('');
   const to = Object.entries(tagMap).map(([k,v])=>`<option value="${k}" ${t.tag===k?'selected':''}>${v}</option>`).join('');
   const sto = ['todo','doing','done'].map(s=>`<option value="${s}" ${t.status===s?'selected':''}>${s==='todo'?'To Do':s==='doing'?'In Progress':'Done'}</option>`).join('');
+  const po = ['high','medium','low'].map(p=>`<option value="${p}" ${(t.priority||'medium')===p?'selected':''}>${priorityMap[p]}</option>`).join('');
   const dis = canEdit ? '' : 'disabled';
 
   // Hide folder selector when editing someone else's shared task
@@ -859,9 +1077,10 @@ function openTaskDetail(id) {
       <div class="detail-field"><label class="detail-label">Status</label><select class="modal-input" id="dt-status" ${dis}>${sto}</select></div>
     </div>
     <div class="detail-row">
+      <div class="detail-field"><label class="detail-label">Priority</label><select class="modal-input" id="dt-priority" ${dis}>${po}</select></div>
       <div class="detail-field"><label class="detail-label">Scope</label><select class="modal-input" id="dt-scope" ${dis}>${so}</select></div>
-      <div class="detail-field"><label class="detail-label">Date</label><input type="date" class="modal-input" id="dt-date" value="${t.due_date||''}" ${dis} /></div>
     </div>
+    <div class="detail-field"><label class="detail-label">Date</label><input type="date" class="modal-input" id="dt-date" value="${t.due_date||''}" ${dis} /></div>
     ${showFolder ? `<div class="detail-field"><label class="detail-label">Folder</label><select class="modal-input" id="dt-folder" ${dis}>${fo}</select></div>` : ''}
     <div class="detail-field"><label class="detail-label">Note</label><textarea class="modal-textarea" id="dt-note" style="min-height:90px;" ${dis}>${esc(t.note||'')}</textarea></div>
     <div class="detail-field">
@@ -890,6 +1109,7 @@ async function saveTaskDetail() {
     text:   document.getElementById('dt-text').value.trim() || t.text,
     tag:    document.getElementById('dt-tag').value,
     status: document.getElementById('dt-status').value,
+    priority: document.getElementById('dt-priority').value,
     scope:  document.getElementById('dt-scope').value,
     due_date: document.getElementById('dt-date').value || null,
     note:   document.getElementById('dt-note').value,
@@ -1217,7 +1437,8 @@ async function openSharedContext(idx) {
   const typeLabel = share.resource_type === 'board' ? 'board' : share.resource_type === 'folder' ? 'folder' : 'task';
   document.getElementById('page-title').textContent = `${ownerName}'s ${typeLabel}`;
   document.getElementById('add-bar').style.display = 'none';
-  document.getElementById('view-tabs').style.display = 'none';
+  document.getElementById('view-tabs').style.display = 'flex';
+  document.getElementById('scope-tabs').style.display = 'none';
   document.getElementById('share-topbar-btn').style.display = 'none';
   document.getElementById('newtask-topbar-btn').style.display = 'none';
   document.getElementById('topbar-search').style.display = 'flex';
